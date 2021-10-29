@@ -1,0 +1,798 @@
+package main
+
+import (
+	"fmt"
+	"math"
+
+	"github.com/veandco/go-sdl2/sdl"
+)
+
+const screenS = 800
+
+var light = sdl.Color{R: 255, G: 255, B: 255, A: 255}
+var dark = sdl.Color{R: 28, G: 103, B: 201, A: 255}
+var board [64]*Square
+
+var whiteCastleShort bool = true
+var whiteCastleLong bool = true
+var blackCastleShort bool = true
+var blackCastleLong bool = true
+
+var pieces [32]*Piece
+
+var selectedSquare *Square
+var selectedPiece *Piece
+
+var turn int = 1 //1 - white to move, 0 - black to move
+
+var cemetary *Square = &Square{X: -1, Y: -1, Rectangle: nil, isOccupiedWhite: false, isOccupiedBlack: false}
+
+var klTex *sdl.Texture
+var qlTex *sdl.Texture
+var rlTex *sdl.Texture
+var nlTex *sdl.Texture
+var blTex *sdl.Texture
+var plTex *sdl.Texture
+
+var kdTex *sdl.Texture
+var qdTex *sdl.Texture
+var rdTex *sdl.Texture
+var ndTex *sdl.Texture
+var bdTex *sdl.Texture
+var pdTex *sdl.Texture
+
+type Piece struct {
+	Type    int //1 - king, 2 - queen, 3  - rook, 4 - kknight, 5 - bishop, 6 - pawn
+	Color   int //1 - white, 0 - black
+	Draw    func(Piece, *sdl.Renderer)
+	Move    func(Piece, *Square) Piece
+	Pos     *Square
+	Destroy func(Piece) Piece
+}
+
+type Square struct {
+	X               int32
+	Y               int32
+	Rectangle       *sdl.Rect
+	isOccupiedWhite bool
+	isOccupiedBlack bool
+}
+
+func initBoard() [64]*Square {
+	var s [64]*Square
+	var k int = 0
+
+	for i := 0; i < 8; i++ {
+		for j := 0; j < 8; j++ {
+			s[k] = &Square{X: int32(i), Y: int32(j), Rectangle: &sdl.Rect{X: int32(i * screenS / 8), Y: int32(j * screenS / 8), H: int32(screenS / 8), W: int32(screenS / 8)}}
+			k += 1
+		}
+	}
+	return s
+}
+
+func drawPiece(self Piece, renderer *sdl.Renderer) {
+	if self.Pos != cemetary {
+		if self.Color == 1 {
+			if self.Type == 1 {
+				renderer.Copy(klTex, nil, self.Pos.Rectangle)
+				return
+			} else if self.Type == 2 {
+				renderer.Copy(qlTex, nil, self.Pos.Rectangle)
+				return
+
+			} else if self.Type == 3 {
+				renderer.Copy(rlTex, nil, self.Pos.Rectangle)
+				return
+
+			} else if self.Type == 4 {
+				renderer.Copy(nlTex, nil, self.Pos.Rectangle)
+				return
+
+			} else if self.Type == 5 {
+				renderer.Copy(blTex, nil, self.Pos.Rectangle)
+				return
+
+			} else if self.Type == 6 {
+				renderer.Copy(plTex, nil, self.Pos.Rectangle)
+				return
+
+			}
+		} else if self.Color == 0 {
+			if self.Type == 1 {
+				renderer.Copy(kdTex, nil, self.Pos.Rectangle)
+				return
+			} else if self.Type == 2 {
+				renderer.Copy(qdTex, nil, self.Pos.Rectangle)
+				return
+
+			} else if self.Type == 3 {
+				renderer.Copy(rdTex, nil, self.Pos.Rectangle)
+				return
+
+			} else if self.Type == 4 {
+				renderer.Copy(ndTex, nil, self.Pos.Rectangle)
+				return
+
+			} else if self.Type == 5 {
+				renderer.Copy(bdTex, nil, self.Pos.Rectangle)
+				return
+
+			} else if self.Type == 6 {
+				renderer.Copy(pdTex, nil, self.Pos.Rectangle)
+				return
+
+			}
+		}
+
+	}
+
+}
+
+func kingMove(self Piece, t *Square) Piece {
+
+	if ((self.Pos.X == t.X) && (self.Pos.Y+1 == t.Y || self.Pos.Y-1 == t.Y)) || ((self.Pos.Y == t.Y) && (self.Pos.X+1 == t.X || self.Pos.X-1 == t.X)) || (int32(math.Abs(float64(self.Pos.X-t.X))) == 1 && 1 == int32(math.Abs(float64(self.Pos.Y-t.Y)))) {
+		if (!t.isOccupiedWhite && self.Color == 1) || (!t.isOccupiedBlack && self.Color == 0) {
+			if (t.isOccupiedBlack && self.Color == 1) || (t.isOccupiedWhite && self.Color == 0) {
+				for i := 0; i < len(pieces); i++ {
+					if pieces[i].Pos == t {
+						if pieces[i].Type != 1 {
+							*pieces[i] = pieces[i].Destroy(*pieces[i])
+						} else {
+							return self
+						}
+
+					}
+				}
+			}
+			self.Pos = t
+			if turn == 0 {
+				turn = 1
+			} else if turn == 1 {
+				turn = 0
+			}
+			if self.Color == 1 {
+				whiteCastleLong = false
+				whiteCastleShort = false
+			} else {
+				blackCastleShort = false
+				blackCastleShort = false
+			}
+		} else {
+			fmt.Println("Invalid move!")
+		}
+
+	}
+	return self
+}
+func pawnMove(self Piece, t *Square) Piece {
+	var blocked bool = false
+	if (self.Pos.X == t.X) && ((self.Color == 1 && self.Pos.Y-1 == t.Y) || (self.Color == 0 && self.Pos.Y+1 == t.Y)) {
+		if !t.isOccupiedBlack && !t.isOccupiedWhite {
+			self.Pos = t
+			if turn == 0 {
+				turn = 1
+			} else if turn == 1 {
+				turn = 0
+			}
+			if (self.Pos.Y == 0 && self.Color == 1) || (self.Pos.Y == 7 && self.Color == 0) {
+				self = Piece{Type: 2, Color: self.Color, Draw: self.Draw, Move: queenMove, Pos: self.Pos, Destroy: self.Destroy}
+			}
+			return self
+		}
+
+	} else if int32(math.Abs(float64(self.Pos.X-t.X))) == 1 && 1 == int32(math.Abs(float64(self.Pos.Y-t.Y))) {
+		if (!t.isOccupiedWhite && self.Color == 1) || (!t.isOccupiedBlack && self.Color == 0) {
+			if (t.isOccupiedBlack && self.Color == 1) || (t.isOccupiedWhite && self.Color == 0) {
+				for i := 0; i < len(pieces); i++ {
+					if pieces[i].Pos == t {
+						if pieces[i].Type != 1 {
+							*pieces[i] = pieces[i].Destroy(*pieces[i])
+							self.Pos = t
+							if turn == 0 {
+								turn = 1
+							} else if turn == 1 {
+								turn = 0
+							}
+							if (self.Pos.Y == 0 && self.Color == 1) || (self.Pos.Y == 7 && self.Color == 0) {
+								self = Piece{Type: 2, Color: self.Color, Draw: self.Draw, Move: queenMove, Pos: self.Pos, Destroy: self.Destroy}
+							}
+							return self
+
+						} else {
+							return self
+						}
+
+					}
+				}
+			}
+		}
+	} else if self.Pos.X == t.X && (self.Color == 1 && self.Pos.Y == 6 && self.Pos.Y-2 == t.Y) {
+		for i := self.Pos.Y - 1; i > t.Y; i-- {
+			for j := 0; j < len(board); j++ {
+				if board[j].X == self.Pos.X && board[j].Y == i {
+					if board[j].isOccupiedBlack || board[j].isOccupiedWhite {
+						blocked = true
+						break
+					}
+				}
+			}
+		}
+		if !blocked {
+			self.Pos = t
+			if turn == 0 {
+				turn = 1
+			} else if turn == 1 {
+				turn = 0
+			}
+		}
+
+	} else if self.Color == 0 && self.Pos.Y == 1 && self.Pos.Y+2 == t.Y {
+		for i := self.Pos.Y + 1; i < t.Y; i++ {
+			for j := 0; j < len(board); j++ {
+				if board[j].X == self.Pos.X && board[j].Y == i {
+					if board[j].isOccupiedBlack || board[j].isOccupiedWhite {
+						blocked = true
+						break
+					}
+				}
+			}
+		}
+		if !blocked {
+			self.Pos = t
+			if turn == 0 {
+				turn = 1
+			} else if turn == 1 {
+				turn = 0
+			}
+		}
+
+	}
+	return self
+}
+
+func rookMove(self Piece, t *Square) Piece {
+	var blocked bool = false
+	if self.Pos.X == t.X || self.Pos.Y == t.Y {
+		if self.Pos.X == t.X {
+			if self.Pos.Y > t.Y {
+
+				for i := self.Pos.Y - 1; i > t.Y; i-- {
+					for j := 0; j < len(board); j++ {
+						if board[j].X == self.Pos.X && board[j].Y == i {
+							if board[j].isOccupiedBlack || board[j].isOccupiedWhite {
+								blocked = true
+								break
+							}
+						}
+					}
+				}
+			} else if self.Pos.Y < t.Y {
+				for i := self.Pos.Y + 1; i < t.Y; i++ {
+					for j := 0; j < len(board); j++ {
+						if board[j].X == self.Pos.X && board[j].Y == i {
+							if board[j].isOccupiedBlack || board[j].isOccupiedWhite {
+								blocked = true
+								break
+							}
+						}
+					}
+				}
+			}
+		} else if self.Pos.Y == t.Y {
+			if self.Pos.X > t.X {
+
+				for i := self.Pos.X - 1; i > t.X; i-- {
+					for j := 0; j < len(board); j++ {
+						if board[j].Y == self.Pos.Y && board[j].X == i {
+							if board[j].isOccupiedBlack || board[j].isOccupiedWhite {
+								blocked = true
+								break
+							}
+						}
+					}
+				}
+			} else if self.Pos.X < t.X {
+				for i := self.Pos.X + 1; i < t.X; i++ {
+					for j := 0; j < len(board); j++ {
+						if board[j].Y == self.Pos.Y && board[j].X == i {
+							if board[j].isOccupiedBlack || board[j].isOccupiedWhite {
+								blocked = true
+								break
+							}
+						}
+					}
+				}
+			}
+		}
+
+		if !blocked {
+			if (!t.isOccupiedWhite && self.Color == 1) || (!t.isOccupiedBlack && self.Color == 0) {
+				if (t.isOccupiedBlack && self.Color == 1) || (t.isOccupiedWhite && self.Color == 0) {
+					for i := 0; i < len(pieces); i++ {
+						if pieces[i].Pos == t {
+							if pieces[i].Type != 1 {
+								*pieces[i] = pieces[i].Destroy(*pieces[i])
+							} else {
+								return self
+							}
+
+						}
+					}
+				}
+				self.Pos = t
+				if turn == 0 {
+					turn = 1
+				} else if turn == 1 {
+					turn = 0
+				}
+			}
+		}
+
+	}
+
+	return self
+}
+
+func queenMove(self Piece, t *Square) Piece {
+	var blocked bool = false
+	if (self.Pos.X == t.X) || (self.Pos.Y == t.Y) || (int32(math.Abs(float64(self.Pos.X-t.X))) == int32(math.Abs(float64(self.Pos.Y-t.Y)))) {
+		if self.Pos.X == t.X {
+			if self.Pos.Y > t.Y {
+
+				for i := self.Pos.Y - 1; i > t.Y; i-- {
+					for j := 0; j < len(board); j++ {
+						if board[j].X == self.Pos.X && board[j].Y == i {
+							if board[j].isOccupiedBlack || board[j].isOccupiedWhite {
+								blocked = true
+								break
+							}
+						}
+					}
+				}
+			} else if self.Pos.Y < t.Y {
+				for i := self.Pos.Y + 1; i < t.Y; i++ {
+					for j := 0; j < len(board); j++ {
+						if board[j].X == self.Pos.X && board[j].Y == i {
+							if board[j].isOccupiedBlack || board[j].isOccupiedWhite {
+								blocked = true
+								break
+							}
+						}
+					}
+				}
+			}
+		} else if self.Pos.Y == t.Y {
+			if self.Pos.X > t.X {
+
+				for i := self.Pos.X - 1; i > t.X; i-- {
+					for j := 0; j < len(board); j++ {
+						if board[j].Y == self.Pos.Y && board[j].X == i {
+							if board[j].isOccupiedBlack || board[j].isOccupiedWhite {
+								blocked = true
+								break
+							}
+						}
+					}
+				}
+			} else if self.Pos.X < t.X {
+				for i := self.Pos.X + 1; i < t.X; i++ {
+					for j := 0; j < len(board); j++ {
+						if board[j].Y == self.Pos.Y && board[j].X == i {
+							if board[j].isOccupiedBlack || board[j].isOccupiedWhite {
+								blocked = true
+								break
+							}
+						}
+					}
+				}
+			}
+		} else if int32(math.Abs(float64(self.Pos.X-t.X))) == int32(math.Abs(float64(self.Pos.Y-t.Y))) {
+			n := int32(math.Abs(float64(self.Pos.X - t.X)))
+			xd := (t.X - self.Pos.X) / n
+			yd := (t.Y - self.Pos.Y) / n
+			for k := 1; int32(k) < n; k++ {
+				for i := 0; i < len(board); i++ {
+					if (self.Pos.X+(int32(k)*xd)) == board[i].X && (self.Pos.Y+(int32(k)*yd)) == board[i].Y {
+						if board[i].isOccupiedBlack || board[i].isOccupiedWhite {
+							blocked = true
+							return self
+						}
+					}
+				}
+			}
+
+		}
+		if !blocked {
+
+			if (!t.isOccupiedBlack && self.Color == 0) || (!t.isOccupiedWhite && self.Color == 1) {
+				if (t.isOccupiedBlack && self.Color == 1) || (t.isOccupiedWhite && self.Color == 0) {
+					for i := 0; i < len(pieces); i++ {
+						if pieces[i].Pos == t {
+							if pieces[i].Type != 1 {
+								*pieces[i] = pieces[i].Destroy(*pieces[i])
+							} else {
+								return self
+							}
+						}
+					}
+				}
+			}
+
+			self.Pos = t
+			if turn == 0 {
+				turn = 1
+			} else if turn == 1 {
+				turn = 0
+			}
+		}
+	}
+	return self
+}
+
+func bishopMove(self Piece, t *Square) Piece {
+	var blocked bool = false
+	if int32(math.Abs(float64(self.Pos.X-t.X))) == int32(math.Abs(float64(self.Pos.Y-t.Y))) {
+		n := int32(math.Abs(float64(self.Pos.X - t.X)))
+		xd := (t.X - self.Pos.X) / n
+		yd := (t.Y - self.Pos.Y) / n
+		for k := 1; int32(k) < n; k++ {
+			for i := 0; i < len(board); i++ {
+				if (self.Pos.X+(int32(k)*xd)) == board[i].X && (self.Pos.Y+(int32(k)*yd)) == board[i].Y {
+					if board[i].isOccupiedBlack || board[i].isOccupiedWhite {
+						blocked = true
+						return self
+					}
+				}
+			}
+		}
+
+		if !blocked {
+			if (!t.isOccupiedBlack && self.Color == 0) || (!t.isOccupiedWhite && self.Color == 1) {
+				if (t.isOccupiedBlack && self.Color == 1) || (t.isOccupiedWhite && self.Color == 0) {
+					for i := 0; i < len(pieces); i++ {
+						if pieces[i].Pos == t {
+							if pieces[i].Type != 1 {
+								*pieces[i] = pieces[i].Destroy(*pieces[i])
+							} else {
+								return self
+							}
+						}
+					}
+				}
+				self.Pos = t
+				if turn == 0 {
+					turn = 1
+				} else if turn == 1 {
+					turn = 0
+				}
+			}
+		}
+	}
+
+	return self
+}
+
+func knightMove(self Piece, t *Square) Piece {
+	if ((int32(math.Abs(float64(self.Pos.X-t.X)))) == 2 && (int32(math.Abs(float64(self.Pos.Y-t.Y))) == 1)) || ((int32(math.Abs(float64(self.Pos.Y-t.Y)))) == 2 && (int32(math.Abs(float64(self.Pos.X-t.X))) == 1)) {
+		if (!t.isOccupiedBlack && self.Color == 0) || (!t.isOccupiedWhite && self.Color == 1) {
+			if (t.isOccupiedBlack && self.Color == 1) || (t.isOccupiedWhite && self.Color == 0) {
+				for i := 0; i < len(pieces); i++ {
+					if pieces[i].Pos == t {
+						if pieces[i].Type != 1 {
+							*pieces[i] = pieces[i].Destroy(*pieces[i])
+						} else {
+							return self
+						}
+					}
+				}
+			}
+		}
+		self.Pos = t
+		if turn == 0 {
+			turn = 1
+		} else if turn == 1 {
+			turn = 0
+		}
+	}
+	return self
+}
+
+func updateBoard(board [64]*Square, s [32]*Piece) [64]*Square {
+	for i := 0; i < len(board); i++ {
+		found := false
+		for j := 0; j < len(s); j++ {
+			if s[j].Pos == board[i] {
+				if s[j].Color == 1 {
+					found = true
+					board[i].isOccupiedWhite = true
+
+				} else if s[j].Color == 0 {
+					found = true
+					board[i].isOccupiedBlack = true
+				}
+			}
+		}
+		if !found {
+			board[i].isOccupiedBlack = false
+			board[i].isOccupiedWhite = false
+		}
+	}
+	return board
+}
+
+func inSquare(x int32, y int32, s *Square) bool {
+	if (x > s.X*screenS/8) && (x < (s.X*screenS/8)+screenS/8) && (y > s.Y*screenS/8) && (y < (s.Y*screenS/8)+screenS/8) {
+		return true
+	} else {
+		return false
+	}
+}
+
+func destroyPiece(self Piece) Piece {
+	if self.Color == 0 {
+		self.Pos.isOccupiedBlack = false
+	} else if self.Color == 1 {
+		self.Pos.isOccupiedWhite = false
+	}
+	self.Pos = cemetary
+	return self
+}
+
+func choosePromotion(p Piece) int {
+	if p.Color == 0 {
+
+	} else if p.Color == 1 {
+
+	}
+	return -1
+}
+
+func main() {
+	if err := sdl.Init(sdl.INIT_EVERYTHING); err != nil {
+		fmt.Println("initializing SDL:", err)
+		return
+	}
+
+	window, err := sdl.CreateWindow(
+		"Chess",
+		sdl.WINDOWPOS_UNDEFINED, sdl.WINDOWPOS_UNDEFINED,
+		screenS, screenS,
+		sdl.WINDOW_OPENGL)
+	if err != nil {
+		fmt.Println("initializing window:", err)
+		return
+	}
+	defer window.Destroy()
+
+	renderer, err := sdl.CreateRenderer(window, -1, sdl.RENDERER_ACCELERATED)
+	if err != nil {
+		fmt.Println("initializing renderer:", err)
+		return
+	}
+	defer renderer.Destroy()
+
+	board = initBoard()
+
+	//Loading textures
+
+	//white pieces
+	plSurf, err := sdl.LoadBMP(`.\Pieces\pl.bmp`)
+
+	plTex, err = renderer.CreateTextureFromSurface(plSurf)
+
+	klSurf, err := sdl.LoadBMP(`.\Pieces\kl.bmp`)
+
+	klTex, err = renderer.CreateTextureFromSurface(klSurf)
+
+	qlSurf, err := sdl.LoadBMP(`.\Pieces\ql.bmp`)
+
+	qlTex, err = renderer.CreateTextureFromSurface(qlSurf)
+
+	rlSurf, err := sdl.LoadBMP(`.\Pieces\rl.bmp`)
+
+	rlTex, err = renderer.CreateTextureFromSurface(rlSurf)
+
+	nlSurf, err := sdl.LoadBMP(`.\Pieces\nl.bmp`)
+
+	nlTex, err = renderer.CreateTextureFromSurface(nlSurf)
+
+	blSurf, err := sdl.LoadBMP(`.\Pieces\bl.bmp`)
+
+	blTex, err = renderer.CreateTextureFromSurface(blSurf)
+
+	//dark pieces
+	pdSurf, err := sdl.LoadBMP(`.\Pieces\pd.bmp`)
+
+	pdTex, err = renderer.CreateTextureFromSurface(pdSurf)
+
+	kdSurf, err := sdl.LoadBMP(`.\Pieces\kd.bmp`)
+
+	kdTex, err = renderer.CreateTextureFromSurface(kdSurf)
+
+	qdSurf, err := sdl.LoadBMP(`.\Pieces\qd.bmp`)
+
+	qdTex, err = renderer.CreateTextureFromSurface(qdSurf)
+
+	rdSurf, err := sdl.LoadBMP(`.\Pieces\rd.bmp`)
+
+	rdTex, err = renderer.CreateTextureFromSurface(rdSurf)
+
+	ndSurf, err := sdl.LoadBMP(`.\Pieces\nd.bmp`)
+
+	ndTex, err = renderer.CreateTextureFromSurface(ndSurf)
+
+	bdSurf, err := sdl.LoadBMP(`.\Pieces\bd.bmp`)
+
+	bdTex, err = renderer.CreateTextureFromSurface(bdSurf)
+
+	//
+
+	var kw Piece = Piece{Type: 1, Color: 1, Draw: drawPiece, Pos: board[39], Move: kingMove}
+	var qw Piece = Piece{Type: 2, Color: 1, Draw: drawPiece, Pos: board[31], Move: queenMove, Destroy: destroyPiece}
+	var rw1 Piece = Piece{Type: 3, Color: 1, Draw: drawPiece, Pos: board[7], Move: rookMove, Destroy: destroyPiece}
+	var rw2 Piece = Piece{Type: 3, Color: 1, Draw: drawPiece, Pos: board[63], Move: rookMove, Destroy: destroyPiece}
+	var nw1 Piece = Piece{Type: 4, Color: 1, Draw: drawPiece, Pos: board[15], Move: knightMove, Destroy: destroyPiece}
+	var nw2 Piece = Piece{Type: 4, Color: 1, Draw: drawPiece, Pos: board[55], Move: knightMove, Destroy: destroyPiece}
+	var bw1 Piece = Piece{Type: 5, Color: 1, Draw: drawPiece, Pos: board[23], Move: bishopMove, Destroy: destroyPiece}
+	var bw2 Piece = Piece{Type: 5, Color: 1, Draw: drawPiece, Pos: board[47], Move: bishopMove, Destroy: destroyPiece}
+
+	var pw1 Piece = Piece{Type: 6, Color: 1, Draw: drawPiece, Pos: board[62], Move: pawnMove, Destroy: destroyPiece}
+	var pw2 Piece = Piece{Type: 6, Color: 1, Draw: drawPiece, Pos: board[54], Move: pawnMove, Destroy: destroyPiece}
+	var pw3 Piece = Piece{Type: 6, Color: 1, Draw: drawPiece, Pos: board[46], Move: pawnMove, Destroy: destroyPiece}
+	var pw4 Piece = Piece{Type: 6, Color: 1, Draw: drawPiece, Pos: board[38], Move: pawnMove, Destroy: destroyPiece}
+	var pw5 Piece = Piece{Type: 6, Color: 1, Draw: drawPiece, Pos: board[30], Move: pawnMove, Destroy: destroyPiece}
+	var pw6 Piece = Piece{Type: 6, Color: 1, Draw: drawPiece, Pos: board[22], Move: pawnMove, Destroy: destroyPiece}
+	var pw7 Piece = Piece{Type: 6, Color: 1, Draw: drawPiece, Pos: board[14], Move: pawnMove, Destroy: destroyPiece}
+	var pw8 Piece = Piece{Type: 6, Color: 1, Draw: drawPiece, Pos: board[6], Move: pawnMove, Destroy: destroyPiece}
+
+	var kb Piece = Piece{Type: 1, Color: 0, Draw: drawPiece, Pos: board[32], Move: kingMove}
+	var qb Piece = Piece{Type: 2, Color: 0, Draw: drawPiece, Pos: board[24], Move: queenMove, Destroy: destroyPiece}
+	var rb1 Piece = Piece{Type: 3, Color: 0, Draw: drawPiece, Pos: board[0], Move: rookMove, Destroy: destroyPiece}
+	var rb2 Piece = Piece{Type: 3, Color: 0, Draw: drawPiece, Pos: board[56], Move: rookMove, Destroy: destroyPiece}
+	var nb1 Piece = Piece{Type: 4, Color: 0, Draw: drawPiece, Pos: board[8], Move: knightMove, Destroy: destroyPiece}
+	var nb2 Piece = Piece{Type: 4, Color: 0, Draw: drawPiece, Pos: board[48], Move: knightMove, Destroy: destroyPiece}
+	var bb1 Piece = Piece{Type: 5, Color: 0, Draw: drawPiece, Pos: board[16], Move: bishopMove, Destroy: destroyPiece}
+	var bb2 Piece = Piece{Type: 5, Color: 0, Draw: drawPiece, Pos: board[40], Move: bishopMove, Destroy: destroyPiece}
+
+	var pb1 Piece = Piece{Type: 6, Color: 0, Draw: drawPiece, Pos: board[57], Move: pawnMove, Destroy: destroyPiece}
+	var pb2 Piece = Piece{Type: 6, Color: 0, Draw: drawPiece, Pos: board[49], Move: pawnMove, Destroy: destroyPiece}
+	var pb3 Piece = Piece{Type: 6, Color: 0, Draw: drawPiece, Pos: board[41], Move: pawnMove, Destroy: destroyPiece}
+	var pb4 Piece = Piece{Type: 6, Color: 0, Draw: drawPiece, Pos: board[33], Move: pawnMove, Destroy: destroyPiece}
+	var pb5 Piece = Piece{Type: 6, Color: 0, Draw: drawPiece, Pos: board[25], Move: pawnMove, Destroy: destroyPiece}
+	var pb6 Piece = Piece{Type: 6, Color: 0, Draw: drawPiece, Pos: board[17], Move: pawnMove, Destroy: destroyPiece}
+	var pb7 Piece = Piece{Type: 6, Color: 0, Draw: drawPiece, Pos: board[9], Move: pawnMove, Destroy: destroyPiece}
+	var pb8 Piece = Piece{Type: 6, Color: 0, Draw: drawPiece, Pos: board[1], Move: pawnMove, Destroy: destroyPiece}
+
+	pieces = [32]*Piece{&kw, &qw, &rw1, &rw2, &nw1, &nw2, &bw1, &bw2, &pw1, &pw2, &pw3, &pw4, &pw5, &pw6, &pw7, &pw8, &kb, &qb, &rb1, &rb2, &nb1, &nb2, &bb1, &bb2, &pb1, &pb2, &pb3, &pb4, &pb5, &pb6, &pb7, &pb8}
+
+	board = updateBoard(board, pieces)
+	for {
+		for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
+			switch t := event.(type) {
+			case *sdl.QuitEvent:
+				return
+
+			case *sdl.MouseButtonEvent:
+				if t.State == sdl.PRESSED {
+					if selectedPiece == nil {
+						//selectedSquare = nil
+						//fmt.Println(t.X, t.Y)
+						for i := 0; i < len(board); i++ {
+							if inSquare(t.X, t.Y, board[i]) {
+								//fmt.Println("square: ", board[i].X, board[i].Y)
+								selectedSquare = board[i]
+								break
+							}
+						}
+
+						for i := 0; i < len(pieces); i++ {
+							if pieces[i].Pos.X == selectedSquare.X && pieces[i].Pos.Y == selectedSquare.Y {
+								if pieces[i].Color == turn {
+									selectedPiece = pieces[i]
+								}
+							}
+						}
+					} else if selectedPiece != nil {
+						//fmt.Println(selectedPiece)
+						for i := 0; i < len(board); i++ {
+							if inSquare(t.X, t.Y, board[i]) {
+								//fmt.Println("square: ", board[i].X, board[i].Y)
+								selectedSquare = board[i]
+							}
+						}
+						newPieceClicked := false
+						for i := 0; i < len(pieces); i++ {
+							if pieces[i].Pos == selectedSquare && pieces[i].Color == selectedPiece.Color {
+								selectedPiece = pieces[i]
+								newPieceClicked = true
+								break
+							}
+						}
+						if newPieceClicked {
+							break
+						}
+
+						*selectedPiece = selectedPiece.Move(*selectedPiece, selectedSquare)
+						selectedPiece = nil
+						selectedSquare = nil
+						board = updateBoard(board, pieces)
+						//fmt.Println(board[45].isOccupiedBlack, board[45].isOccupiedWhite)
+						break
+					}
+
+				}
+
+			}
+
+			board = updateBoard(board, pieces)
+			//draw board
+			renderer.SetDrawColor(255, 0, 0, 255)
+			renderer.Clear()
+			for file := 0; file < 8; file++ {
+				for rank := 0; rank < 8; rank++ {
+					isLight := (rank+file)%2 != 0
+
+					if selectedSquare != nil && (file == int(selectedSquare.X) && rank == int(selectedSquare.Y)) {
+						renderer.SetDrawColor(255, 0, 0, 255)
+					} else if isLight {
+						renderer.SetDrawColor(dark.R, dark.G, dark.B, dark.A)
+
+					} else if !isLight {
+						renderer.SetDrawColor(light.R, light.G, light.B, light.A)
+					}
+
+					position := sdl.Point{X: int32(file * screenS / 8), Y: int32(rank * screenS / 8)}
+					renderer.FillRect(&sdl.Rect{X: position.X, Y: position.Y, W: int32(screenS / 8), H: int32(screenS / 8)})
+
+				}
+
+			}
+
+			kw.Draw(kw, renderer)
+
+			qw.Draw(qw, renderer)
+
+			rw1.Draw(rw1, renderer)
+			rw2.Draw(rw2, renderer)
+
+			nw1.Draw(nw1, renderer)
+			nw2.Draw(nw2, renderer)
+
+			bw1.Draw(bw1, renderer)
+			bw2.Draw(bw2, renderer)
+
+			pw1.Draw(pw1, renderer)
+			pw2.Draw(pw2, renderer)
+			pw3.Draw(pw3, renderer)
+			pw4.Draw(pw4, renderer)
+			pw5.Draw(pw5, renderer)
+			pw6.Draw(pw6, renderer)
+			pw7.Draw(pw7, renderer)
+			pw8.Draw(pw8, renderer)
+
+			kb.Draw(kb, renderer)
+
+			qb.Draw(qb, renderer)
+
+			rb1.Draw(rb1, renderer)
+			rb2.Draw(rb2, renderer)
+
+			nb1.Draw(nb1, renderer)
+			nb2.Draw(nb2, renderer)
+
+			bb1.Draw(bb1, renderer)
+			bb2.Draw(bb2, renderer)
+
+			pb1.Draw(pb1, renderer)
+			pb2.Draw(pb2, renderer)
+			pb3.Draw(pb3, renderer)
+			pb4.Draw(pb4, renderer)
+			pb5.Draw(pb5, renderer)
+			pb6.Draw(pb6, renderer)
+			pb7.Draw(pb7, renderer)
+			pb8.Draw(pb8, renderer)
+			renderer.Present()
+		}
+	}
+}
