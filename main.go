@@ -971,6 +971,8 @@ func main() {
 	pb7 = Piece{Type: 6, Color: 0, Pos: board[49]}
 	pb8 = Piece{Type: 6, Color: 0, Pos: board[57]}
 
+	print("Hello")
+
 	updateBoard()
 	renderer.SetDrawColor(255, 0, 0, 255)
 	drawBoard()
